@@ -41,24 +41,24 @@ import (
 // reference connection will always change.
 
 var (
-	update  = flag.Bool("update", false, "update golden files on failure")
-	fast    = flag.Bool("fast", false, "impose a quick, possibly flaky timeout on recorded tests")
+	update  = flag.Bool("update", true, "update golden files on failure")
+	fast    = flag.Bool("fast", true, "impose a quick, possibly flaky timeout on recorded tests")
 	keyFile = flag.String("keylog", "", "destination file for KeyLogWriter")
 )
 
 func runTestAndUpdateIfNeeded(t *testing.T, name string, run func(t *testing.T, update bool), wait bool) {
-	success := t.Run(name, func(t *testing.T) {
-		if !*update && !wait {
-			t.Parallel()
-		}
-		run(t, false)
-	})
-
-	if !success && *update {
+	//success := t.Run(name, func(t *testing.T) {
+	//	if !*update && !wait {
+	//		t.Parallel()
+	//	}
+	//	run(t, false)
+	//})
+	//
+	//if !success && *update {
 		t.Run(name+"#update", func(t *testing.T) {
 			run(t, true)
 		})
-	}
+	//}
 }
 
 // checkOpenSSLVersion ensures that the version of OpenSSL looks reasonable
@@ -340,9 +340,11 @@ func runMain(m *testing.M) int {
 	// test consistency.
 	once.Do(initDefaultCipherSuites)
 	varDefaultCipherSuitesTLS13 = []uint16{
+		TLS_SM4_GCM_SM3,
 		TLS_AES_128_GCM_SHA256,
 		TLS_CHACHA20_POLY1305_SHA256,
 		TLS_AES_256_GCM_SHA384,
+		TLS_SM4_CCM_SM3,
 	}
 
 	// Set up localPipe.

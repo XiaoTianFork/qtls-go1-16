@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"crypto"
-	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,6 +19,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/xiaotianfork/qtls-go1-16/x509"
 )
 
 var rsaCertPEM = `-----BEGIN CERTIFICATE-----
@@ -93,6 +94,7 @@ var keyPairTests = []struct {
 	key  string
 }{
 	{"ECDSA", ecdsaCertPEM, ecdsaKeyPEM},
+	{"SM2", sm2LeafCert, sm2LeafKey},
 	{"RSA", rsaCertPEM, rsaKeyPEM},
 	{"RSA-untyped", rsaCertPEM, keyPEM}, // golang.org/issue/4477
 }
@@ -742,7 +744,7 @@ func TestCloneFuncFields(t *testing.T) {
 			called |= 1 << 0
 			return time.Time{}
 		},
-		GetCertificate: func(*ClientHelloInfo) (*Certificate, error) {
+		GetCertificate: func(info *ClientHelloInfo) (*Certificate, error) {
 			called |= 1 << 1
 			return nil, nil
 		},
@@ -836,7 +838,7 @@ func TestCloneNonFuncFields(t *testing.T) {
 		}
 	}
 	// Set the unexported fields related to session ticket keys, which are copied with Clone().
-	conf1 := fromConfig(&c1)
+	conf1 := &c1
 	conf1.autoSessionTicketKeys = []ticketKey{conf1.ticketKeyFromBytes(conf1.SessionTicketKey)}
 	conf1.sessionTicketKeys = []ticketKey{conf1.ticketKeyFromBytes(conf1.SessionTicketKey)}
 
@@ -1128,21 +1130,21 @@ func TestConnectionStateMarshal(t *testing.T) {
 }
 
 func TestConnectionState(t *testing.T) {
-	issuer, err := x509.ParseCertificate(testRSACertificateIssuer)
+	rootCAs := x509.NewCertPool()
+	issuer, err := x509.ParseCertificate(gmsmRootCertByte)
 	if err != nil {
 		panic(err)
 	}
-	rootCAs := x509.NewCertPool()
 	rootCAs.AddCert(issuer)
 
-	now := func() time.Time { return time.Unix(1476984729, 0) }
+	now := func() time.Time { return time.Now() }
 
 	const alpnProtocol = "golang"
-	const serverName = "example.golang"
+	const serverName = "localhost"
 	var scts = [][]byte{[]byte("dummy sct 1"), []byte("dummy sct 2")}
 	var ocsp = []byte("dummy ocsp")
 
-	for _, v := range []uint16{VersionTLS12, VersionTLS13} {
+	for _, v := range []uint16{VersionTLS13} {
 		var name string
 		switch v {
 		case VersionTLS12:
@@ -1151,7 +1153,7 @@ func TestConnectionState(t *testing.T) {
 			name = "TLSv13"
 		}
 		t.Run(name, func(t *testing.T) {
-			config := &Config{
+			clientConfig := &Config{
 				Time:         now,
 				Rand:         zeroSource{},
 				Certificates: make([]Certificate, 1),
@@ -1162,12 +1164,29 @@ func TestConnectionState(t *testing.T) {
 				NextProtos:   []string{alpnProtocol},
 				ServerName:   serverName,
 			}
-			config.Certificates[0].Certificate = [][]byte{testRSACertificate}
-			config.Certificates[0].PrivateKey = testRSAPrivateKey
-			config.Certificates[0].SignedCertificateTimestamps = scts
-			config.Certificates[0].OCSPStaple = ocsp
+			clientConfig.Certificates[0].Certificate = [][]byte{gmsmLeafCertByte}
+			clientConfig.Certificates[0].PrivateKey = gmsmLeafPrivateKeyByte
+			clientConfig.Certificates[0].SignedCertificateTimestamps = scts
+			clientConfig.Certificates[0].OCSPStaple = ocsp
 
-			ss, cs, err := testHandshake(t, config, config)
+			serverConfig := &Config{
+				Time:         now,
+				Rand:         zeroSource{},
+				Certificates: make([]Certificate, 1),
+				MaxVersion:   v,
+				RootCAs:      rootCAs,
+				ClientCAs:    rootCAs,
+				ClientAuth:   RequireAndVerifyClientCert,
+				NextProtos:   []string{alpnProtocol},
+				ServerName:   "",
+			}
+			serverConfig.Certificates[0].Certificate = [][]byte{gmsmLeafCertByte}
+			serverConfig.Certificates[0].PrivateKey = gmsmLeafPrivateKeyByte
+			serverConfig.Certificates[0].SignedCertificateTimestamps = scts
+			serverConfig.Certificates[0].OCSPStaple = ocsp
+			serverConfig.PreferServerCipherSuites = true
+
+			ss, cs, err := testHandshake(t, clientConfig, serverConfig)
 			if err != nil {
 				t.Fatalf("Handshake failed: %v", err)
 			}
@@ -1286,12 +1305,21 @@ func TestClientHelloInfo_SupportsCertificate(t *testing.T) {
 		Certificate: [][]byte{testEd25519Certificate},
 		PrivateKey:  testEd25519PrivateKey,
 	}
+	sm2Cert := &Certificate{
+		Certificate: [][]byte{sm2LeafCertByte},
+		PrivateKey:  sm2LeafPrivateKeyByte,
+	}
 
 	tests := []struct {
 		c       *Certificate
 		chi     *ClientHelloInfo
 		wantErr string
 	}{
+		{sm2Cert, &ClientHelloInfo{
+			ServerName:        "www.alipay.com",
+			SignatureSchemes:  []SignatureScheme{SM2WithSM3},
+			SupportedVersions: []uint16{VersionTLS13},
+		}, ""},
 		{rsaCert, &ClientHelloInfo{
 			ServerName:        "example.golang",
 			SignatureSchemes:  []SignatureScheme{PSSWithSHA256},
@@ -1320,14 +1348,14 @@ func TestClientHelloInfo_SupportsCertificate(t *testing.T) {
 			SignatureSchemes:  []SignatureScheme{PKCS1WithSHA1},
 			SupportedVersions: []uint16{VersionTLS13, VersionTLS12},
 		}, "signature algorithms"},
-		{rsaCert, toClientHelloInfo(&clientHelloInfo{
+		{rsaCert, &ClientHelloInfo{
 			CipherSuites:      []uint16{TLS_RSA_WITH_AES_128_GCM_SHA256},
 			SignatureSchemes:  []SignatureScheme{PKCS1WithSHA1},
 			SupportedVersions: []uint16{VersionTLS13, VersionTLS12},
 			config: &Config{
 				MaxVersion: VersionTLS12,
 			},
-		}), ""}, // Check that mutual version selection works.
+		}, ""}, // Check that mutual version selection works.
 
 		{ecdsaCert, &ClientHelloInfo{
 			CipherSuites:      []uint16{TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256},
@@ -1357,7 +1385,7 @@ func TestClientHelloInfo_SupportsCertificate(t *testing.T) {
 			SignatureSchemes:  []SignatureScheme{ECDSAWithP256AndSHA256},
 			SupportedVersions: []uint16{VersionTLS12},
 		}, "cipher suite"},
-		{ecdsaCert, toClientHelloInfo(&clientHelloInfo{
+		{ecdsaCert, &ClientHelloInfo{
 			CipherSuites:      []uint16{TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256},
 			SupportedCurves:   []CurveID{CurveP256},
 			SupportedPoints:   []uint8{pointFormatUncompressed},
@@ -1366,7 +1394,7 @@ func TestClientHelloInfo_SupportsCertificate(t *testing.T) {
 			config: &Config{
 				CipherSuites: []uint16{TLS_RSA_WITH_AES_128_GCM_SHA256},
 			},
-		}), "cipher suite"},
+		}, "cipher suite"},
 		{ecdsaCert, &ClientHelloInfo{
 			CipherSuites:      []uint16{TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256},
 			SupportedCurves:   []CurveID{CurveP384},

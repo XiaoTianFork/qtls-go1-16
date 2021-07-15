@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"golang.org/x/crypto/curve25519"
+	X "github.com/xiaotianfork/qtls-go1-16/x509"
 )
 
 func testClientHello(t *testing.T, serverConfig *Config, m handshakeMessage) {
@@ -422,11 +423,11 @@ func TestCipherSuitePreference(t *testing.T) {
 
 func TestCipherSuitePreferenceTLS13(t *testing.T) {
 	serverConfig := &Config{
-		CipherSuites: []uint16{TLS_AES_128_GCM_SHA256, TLS_CHACHA20_POLY1305_SHA256},
+		CipherSuites: []uint16{TLS_SM4_CCM_SM3, TLS_SM4_GCM_SM3},
 		Certificates: testConfig.Certificates,
 	}
 	clientConfig := &Config{
-		CipherSuites:       []uint16{TLS_CHACHA20_POLY1305_SHA256, TLS_AES_128_GCM_SHA256},
+		CipherSuites:       []uint16{TLS_SM4_CCM_SM3, TLS_SM4_GCM_SM3},
 		InsecureSkipVerify: true,
 	}
 	state, _, err := testHandshake(t, clientConfig, serverConfig)
@@ -1541,14 +1542,14 @@ var getConfigForClientTests = []struct {
 			for i := range config.SessionTicketKey {
 				config.SessionTicketKey[i] = byte(i)
 			}
-			fromConfig(config).sessionTicketKeys = nil
+			config.sessionTicketKeys = nil
 		},
 		func(clientHello *ClientHelloInfo) (*Config, error) {
 			config := testConfig.Clone()
 			for i := range config.SessionTicketKey {
 				config.SessionTicketKey[i] = 0
 			}
-			fromConfig(config).sessionTicketKeys = nil
+			config.sessionTicketKeys = nil
 			return config, nil
 		},
 		"",
@@ -1570,7 +1571,7 @@ var getConfigForClientTests = []struct {
 		},
 		func(clientHello *ClientHelloInfo) (*Config, error) {
 			config := testConfig.Clone()
-			fromConfig(config).sessionTicketKeys = nil
+			config.sessionTicketKeys = nil
 			return config, nil
 		},
 		"",
@@ -1702,7 +1703,7 @@ func TestCloneHash(t *testing.T) {
 	h1 := crypto.SHA256.New()
 	h1.Write([]byte("test"))
 	s1 := h1.Sum(nil)
-	h2 := cloneHash(h1, crypto.SHA256)
+	h2 := cloneHash(h1, X.SHA256)
 	s2 := h2.Sum(nil)
 	if !bytes.Equal(s1, s2) {
 		t.Error("cloned hash generated a different sum")
@@ -1903,7 +1904,7 @@ func TestAESCipherReordering(t *testing.T) {
 			initDefaultCipherSuites()
 			hs := &serverHandshakeState{
 				c: &Conn{
-					config: &config{
+					config: &Config{
 						PreferServerCipherSuites: tc.preferServerCipherSuites,
 						CipherSuites:             tc.serverCiphers,
 					},
@@ -2018,7 +2019,7 @@ func TestAESCipherReordering13(t *testing.T) {
 			initDefaultCipherSuites()
 			hs := &serverHandshakeStateTLS13{
 				c: &Conn{
-					config: &config{
+					config: &Config{
 						PreferServerCipherSuites: tc.preferServerCipherSuites,
 					},
 					vers: VersionTLS13,

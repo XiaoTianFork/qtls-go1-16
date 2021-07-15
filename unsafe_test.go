@@ -2,12 +2,12 @@ package qtls
 
 import (
 	"bytes"
-	"crypto/x509"
 	"errors"
 	"fmt"
 	"reflect"
 	"testing"
 	"time"
+	"github.com/xiaotianfork/qtls-go1-16/x509"
 )
 
 func TestUnsafeConversionIsSafe(t *testing.T) {
@@ -170,3 +170,9 @@ func TestClientSessionStateReinterpretCast(t *testing.T) {
 // 		t.Fatal("failed")
 // 	}
 // }
+
+func TestCryptoHash(t *testing.T) {
+	sha256 := x509.SHA256
+	h := toCryptoHash(sha256)
+	h.New()
+}

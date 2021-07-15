@@ -9,10 +9,11 @@ import (
 	"crypto/md5"
 	"crypto/rsa"
 	"crypto/sha1"
-	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
+
+	"github.com/xiaotianfork/qtls-go1-16/x509"
 )
 
 var errClientKeyExchange = errors.New("tls: invalid ClientKeyExchange message")
@@ -22,11 +23,11 @@ var errServerKeyExchange = errors.New("tls: invalid ServerKeyExchange message")
 // encrypts the pre-master secret to the server's public key.
 type rsaKeyAgreement struct{}
 
-func (ka rsaKeyAgreement) generateServerKeyExchange(config *config, cert *Certificate, clientHello *clientHelloMsg, hello *serverHelloMsg) (*serverKeyExchangeMsg, error) {
+func (ka rsaKeyAgreement) generateServerKeyExchange(config *Config, cert *Certificate, clientHello *clientHelloMsg, hello *serverHelloMsg) (*serverKeyExchangeMsg, error) {
 	return nil, nil
 }
 
-func (ka rsaKeyAgreement) processClientKeyExchange(config *config, cert *Certificate, ckx *clientKeyExchangeMsg, version uint16) ([]byte, error) {
+func (ka rsaKeyAgreement) processClientKeyExchange(config *Config, cert *Certificate, ckx *clientKeyExchangeMsg, version uint16) ([]byte, error) {
 	if len(ckx.ciphertext) < 2 {
 		return nil, errClientKeyExchange
 	}
@@ -54,11 +55,11 @@ func (ka rsaKeyAgreement) processClientKeyExchange(config *config, cert *Certifi
 	return preMasterSecret, nil
 }
 
-func (ka rsaKeyAgreement) processServerKeyExchange(config *config, clientHello *clientHelloMsg, serverHello *serverHelloMsg, cert *x509.Certificate, skx *serverKeyExchangeMsg) error {
+func (ka rsaKeyAgreement) processServerKeyExchange(config *Config, clientHello *clientHelloMsg, serverHello *serverHelloMsg, cert *x509.Certificate, skx *serverKeyExchangeMsg) error {
 	return errors.New("tls: unexpected ServerKeyExchange")
 }
 
-func (ka rsaKeyAgreement) generateClientKeyExchange(config *config, clientHello *clientHelloMsg, cert *x509.Certificate) ([]byte, *clientKeyExchangeMsg, error) {
+func (ka rsaKeyAgreement) generateClientKeyExchange(config *Config, clientHello *clientHelloMsg, cert *x509.Certificate) ([]byte, *clientKeyExchangeMsg, error) {
 	preMasterSecret := make([]byte, 48)
 	preMasterSecret[0] = byte(clientHello.vers >> 8)
 	preMasterSecret[1] = byte(clientHello.vers)
@@ -109,7 +110,7 @@ func md5SHA1Hash(slices [][]byte) []byte {
 // using the given hash function (for >= TLS 1.2) or using a default based on
 // the sigType (for earlier TLS versions). For Ed25519 signatures, which don't
 // do pre-hashing, it returns the concatenation of the slices.
-func hashForServerKeyExchange(sigType uint8, hashFunc crypto.Hash, version uint16, slices ...[]byte) []byte {
+func hashForServerKeyExchange(sigType uint8, hashFunc x509.Hash, version uint16, slices ...[]byte) []byte {
 	if sigType == signatureEd25519 {
 		var signed []byte
 		for _, slice := range slices {
@@ -146,7 +147,7 @@ type ecdheKeyAgreement struct {
 	preMasterSecret []byte
 }
 
-func (ka *ecdheKeyAgreement) generateServerKeyExchange(config *config, cert *Certificate, clientHello *clientHelloMsg, hello *serverHelloMsg) (*serverKeyExchangeMsg, error) {
+func (ka *ecdheKeyAgreement) generateServerKeyExchange(config *Config, cert *Certificate, clientHello *clientHelloMsg, hello *serverHelloMsg) (*serverKeyExchangeMsg, error) {
 	var curveID CurveID
 	for _, c := range clientHello.supportedCurves {
 		if config.supportsCurve(c) {
@@ -184,7 +185,7 @@ func (ka *ecdheKeyAgreement) generateServerKeyExchange(config *config, cert *Cer
 
 	var signatureAlgorithm SignatureScheme
 	var sigType uint8
-	var sigHash crypto.Hash
+	var sigHash x509.Hash
 	if ka.version >= VersionTLS12 {
 		signatureAlgorithm, err = selectSignatureScheme(ka.version, cert, clientHello.supportedSignatureAlgorithms)
 		if err != nil {
@@ -208,7 +209,7 @@ func (ka *ecdheKeyAgreement) generateServerKeyExchange(config *config, cert *Cer
 
 	signOpts := crypto.SignerOpts(sigHash)
 	if sigType == signatureRSAPSS {
-		signOpts = &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash, Hash: sigHash}
+		signOpts = &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash, Hash: toCryptoHash(sigHash)}
 	}
 	sig, err := priv.Sign(config.rand(), signed, signOpts)
 	if err != nil {
@@ -235,7 +236,7 @@ func (ka *ecdheKeyAgreement) generateServerKeyExchange(config *config, cert *Cer
 	return skx, nil
 }
 
-func (ka *ecdheKeyAgreement) processClientKeyExchange(config *config, cert *Certificate, ckx *clientKeyExchangeMsg, version uint16) ([]byte, error) {
+func (ka *ecdheKeyAgreement) processClientKeyExchange(config *Config, cert *Certificate, ckx *clientKeyExchangeMsg, version uint16) ([]byte, error) {
 	if len(ckx.ciphertext) == 0 || int(ckx.ciphertext[0]) != len(ckx.ciphertext)-1 {
 		return nil, errClientKeyExchange
 	}
@@ -248,7 +249,7 @@ func (ka *ecdheKeyAgreement) processClientKeyExchange(config *config, cert *Cert
 	return preMasterSecret, nil
 }
 
-func (ka *ecdheKeyAgreement) processServerKeyExchange(config *config, clientHello *clientHelloMsg, serverHello *serverHelloMsg, cert *x509.Certificate, skx *serverKeyExchangeMsg) error {
+func (ka *ecdheKeyAgreement) processServerKeyExchange(config *Config, clientHello *clientHelloMsg, serverHello *serverHelloMsg, cert *x509.Certificate, skx *serverKeyExchangeMsg) error {
 	if len(skx.key) < 4 {
 		return errServerKeyExchange
 	}
@@ -291,7 +292,7 @@ func (ka *ecdheKeyAgreement) processServerKeyExchange(config *config, clientHell
 	copy(ka.ckx.ciphertext[1:], ourPublicKey)
 
 	var sigType uint8
-	var sigHash crypto.Hash
+	var sigHash x509.Hash
 	if ka.version >= VersionTLS12 {
 		signatureAlgorithm := SignatureScheme(sig[0])<<8 | SignatureScheme(sig[1])
 		sig = sig[2:]
@@ -329,7 +330,7 @@ func (ka *ecdheKeyAgreement) processServerKeyExchange(config *config, clientHell
 	return nil
 }
 
-func (ka *ecdheKeyAgreement) generateClientKeyExchange(config *config, clientHello *clientHelloMsg, cert *x509.Certificate) ([]byte, *clientKeyExchangeMsg, error) {
+func (ka *ecdheKeyAgreement) generateClientKeyExchange(config *Config, clientHello *clientHelloMsg, cert *x509.Certificate) ([]byte, *clientKeyExchangeMsg, error) {
 	if ka.ckx == nil {
 		return nil, nil, errors.New("tls: missing ServerKeyExchange message")
 	}
