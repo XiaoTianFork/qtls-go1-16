@@ -17,7 +17,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"github.com/xiaotianfork/qtls-go1-16/sm2"
+	"github.com/xiaotianfork/q-tls-common/sm2"
 	"io"
 	"net"
 	"runtime"
@@ -26,7 +26,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/xiaotianfork/qtls-go1-16/x509"
+	"github.com/xiaotianfork/q-tls-common/x509"
 	"golang.org/x/sys/cpu"
 )
 

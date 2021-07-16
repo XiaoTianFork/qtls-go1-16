@@ -26,7 +26,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xiaotianfork/qtls-go1-16/x509"
+	"github.com/xiaotianfork/q-tls-common/x509"
 )
 
 // Server returns a new TLS server side connection

@@ -3,7 +3,7 @@ package qtls
 import (
 	"crypto"
 	"crypto/tls"
-	"github.com/xiaotianfork/qtls-go1-16/x509"
+	"github.com/xiaotianfork/q-tls-common/x509"
 	"reflect"
 	"unsafe"
 )

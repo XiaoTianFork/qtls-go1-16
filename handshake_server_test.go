@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"golang.org/x/crypto/curve25519"
-	X "github.com/xiaotianfork/qtls-go1-16/x509"
+	X "github.com/xiaotianfork/q-tls-common/x509"
 )
 
 func testClientHello(t *testing.T, serverConfig *Config, m handshakeMessage) {

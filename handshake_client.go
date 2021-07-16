@@ -13,7 +13,7 @@ import (
 	"crypto/subtle"
 	"errors"
 	"fmt"
-	"github.com/xiaotianfork/qtls-go1-16/sm2"
+	"github.com/xiaotianfork/q-tls-common/sm2"
 	"hash"
 	"io"
 	"net"
@@ -21,7 +21,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/xiaotianfork/qtls-go1-16/x509"
+	"github.com/xiaotianfork/q-tls-common/x509"
 	"golang.org/x/crypto/cryptobyte"
 )
 
