@@ -489,9 +489,6 @@ const (
 // modify it.
 type Config struct {
 
-	//IsTestModule indicate program run in test module
-	IsTestModule bool
-
 	// Rand provides the source of entropy for nonces and RSA blinding.
 	// If Rand is nil, TLS uses the cryptographic random reader in package
 	// crypto/rand.
@@ -1332,7 +1329,6 @@ func (cri *CertificateRequestInfo) SupportsCertificate(c *Certificate) error {
 	}
 	return errors.New("chain is not signed by an acceptable CA")
 }
-
 
 // BuildNameToCertificate parses c.Certificates and builds c.NameToCertificate
 // from the CommonName and SubjectAlternateName fields of each of the leaf
